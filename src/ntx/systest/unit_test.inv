@@ -1,0 +1,10 @@
+localhost ansible_connection=local
+
+[testing_group]
+localhost
+
+[testing_group:vars]
+foo=bar
+
+[all:vars]
+foo_all=bar_all
