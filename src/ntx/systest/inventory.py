@@ -4,8 +4,10 @@ from ansible.parsing.dataloader import DataLoader
 
 
 
+import copy
 import functools
 import importlib
+import paramiko
 import pkgutil
 
 
@@ -88,6 +90,10 @@ class Host(object):
         
         self._ssh = None
 
+        self._cd = None
+
+        self._sudo = None
+
         self.load_modules()
 
 
@@ -125,6 +131,16 @@ class Host(object):
     def __getitem__(self, name):
 
         return self.get(name)
+
+
+
+    def cd(self, path = '~/'):
+
+        result = copy.copy(self)
+
+        result.set_cd(path)
+
+        return result
         
         
         
@@ -154,11 +170,51 @@ class Host(object):
         
     def do(self, command):
     
-        ssh = self.get_connection()
+        ssh = paramiko.SSHClient()
+            
+        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            
+        pkey = paramiko.RSAKey.from_private_key(open(self['ansible_ssh_private_key_file'], 'r'))
+            
+        ssh.connect(self['ansible_host'], username = self['ansible_user'], pkey = pkey)
+
+        if self._sudo != None:
+
+            command = 'sudo -u %s %s' % (self._sudo, command)
+
+        if self._cd != None:
+
+            command = 'cd %s; %s' % (self._cd, command)
         
         ins, out, err = ssh.exec_command(command)
+
+        result = out.readlines()[:]
+
+        ssh.close()
         
-        return out.readlines()
+        return [line.strip() for line in result]
+
+
+
+    def set_cd(self, path = '~/'):
+
+        self._cd = path
+
+
+
+    def set_sudo(self, username = 'root'):
+
+        self._sudo = username
+
+
+
+    def sudo(self, username = 'root'):
+
+        result = copy.copy(self)
+
+        result.set_sudo(username)
+
+        return result
 
 
 
@@ -298,17 +354,39 @@ class InvetoryTestCase(unittest.TestCase):
 
     def setUp(self):
 
-        self.inventory = Inventory('unit_test.inv')
+        inventory_description = '''
+localhost ansible_connection=local ansible_user=isilla ansible_host=localhost ansible_ssh_private_key_file=/home/isilla/.ssh/id_rsa
+
+[testing_group]
+localhost
+
+[testing_group:vars]
+foo=bar
+
+[all:vars]
+foo_all=bar_all
+        '''
+
+        f = open('/tmp/unit_test.inv', 'w')
+
+        f.write(inventory_description)
+
+        f.close()
+
+        self.inventory = Inventory('/tmp/unit_test.inv')
 
 
 
     def test_01_loading(self):
+        '''Loading the inventory
+        '''
 
         self.assertNotEqual(None, self.inventory, 'Loading inventory')
 
 
 
     def test_02_inventory_hosts(self):
+        '''Reading the hosts'''
 
         self.assertEqual('localhost', self.inventory.get('localhost')._name, 'Reading host: localhost')
 
@@ -317,6 +395,7 @@ class InvetoryTestCase(unittest.TestCase):
 
 
     def test_03_inventory_groups(self):
+        '''Reading the groups'''
 
         self.assertEqual('testing_group', self.inventory.get('testing_group')._name, 'Reading group: testing_group')
 
@@ -325,6 +404,7 @@ class InvetoryTestCase(unittest.TestCase):
 
 
     def test_04_inventory_variables(self):
+        '''Reading the inventory variables'''
 
         self.assertEqual('bar_all', self.inventory.get('foo_all'), 'Reading an inventory-wide variable')
 
@@ -333,6 +413,7 @@ class InvetoryTestCase(unittest.TestCase):
 
 
     def test_05_group_hosts(self):
+        '''Reading hosts from groups'''
 
         group = self.inventory.get_group('testing_group')
 
@@ -345,6 +426,7 @@ class InvetoryTestCase(unittest.TestCase):
 
 
     def test_06_group_variables(self):
+        '''Reading group variables'''
 
         group = self.inventory.get_group('testing_group')
 
@@ -355,6 +437,7 @@ class InvetoryTestCase(unittest.TestCase):
 
 
     def test_07_host_variables(self):
+        '''Reading host variables'''
 
         host = self.inventory.get_host('localhost')
 
@@ -365,6 +448,7 @@ class InvetoryTestCase(unittest.TestCase):
 
 
     def test_08_host_modules_hook(self):
+        '''Hooking modules'''
 
         host = self.inventory.get_host('localhost')
 
@@ -373,7 +457,30 @@ class InvetoryTestCase(unittest.TestCase):
         self.assertEqual('File [/tmp/foo.txt]', file.__repr__(), 'Hooking modules from Host')
 
 
+    def test_09_host_remote_do(self):
+        '''Running remote commands'''
+
+        host = self.inventory.get_host('localhost')
+
+        out = host.do('whoami')
+
+        self.assertEqual('%s\n' % host['ansible_user'], out[0], 'Remotely running a command')
+
+
+
+    def test_10_reading_remote_file(self):
+        '''Reading remote files'''
+
+        host = self.inventory.get_host('localhost')
+
+        host.do('echo "One ring to rule them all" > /tmp/remote_file.txt')
+
+        file_content = host.file('/tmp/remote_file.txt').cat()
+
+        self.assertEqual('One ring to rule them all\n', file_content[0], 'Reading a remote file')
+
+
 
 if __name__ == '__main__':
 
-    unittest.main(verbosity = 2)
+    unittest.main(verbosity=2)
