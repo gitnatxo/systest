@@ -4,6 +4,12 @@ from ansible.parsing.dataloader import DataLoader
 
 
 
+import functools
+import importlib
+import pkgutil
+
+
+
 class Group:
 
     def __init__(self, group_name, inventory):
@@ -72,6 +78,8 @@ class Group:
 
 class Host(object):
 
+    _modules = None
+
     def __init__(self, host_name, inventory):
         
         self._name = host_name
@@ -80,9 +88,21 @@ class Host(object):
         
         self._ssh = None
 
-        self._modules = dict()
+        self.load_modules()
 
-        # TODO: load modules and put them in self._modules
+
+
+    def load_modules(self):
+
+        if Host._modules == None:
+
+            Host._modules = dict()
+
+            for module_name in [name for _, name, _ in pkgutil.iter_modules(['modules'])]:
+
+                module = importlib.import_module('modules.%s' % module_name)
+
+                Host._modules[module_name] = module.hook
         
         
         
@@ -90,9 +110,11 @@ class Host(object):
 
         # TODO: look for module
 
-        if self._modules.has_key(name):
+        if Host._modules.has_key(name):
 
-            return self._modules[name]
+            p = functools.partial(Host._modules[name], self)
+
+            return p
 
         else:
 
@@ -339,6 +361,16 @@ class InvetoryTestCase(unittest.TestCase):
         self.assertEqual('bar_all', host.get('foo_all'), 'Reading a host variable')
 
         self.assertEqual('bar_all', host['foo_all'], 'Reading a host variable [getitem]')
+
+
+
+    def test_08_host_modules_hook(self):
+
+        host = self.inventory.get_host('localhost')
+
+        file = host.file('/tmp/foo.txt')
+
+        self.assertEqual('File [/tmp/foo.txt]', file.__repr__(), 'Hooking modules from Host')
 
 
 
