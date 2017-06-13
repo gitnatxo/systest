@@ -9,6 +9,7 @@ import functools
 import importlib
 import paramiko
 import pkgutil
+import subprocess
 
 
 
@@ -165,18 +166,12 @@ class Host(object):
             self._ssh = ssh
             
         return self._ssh
-        
-        
-        
+
+
+
     def do(self, command):
-    
-        ssh = paramiko.SSHClient()
-            
-        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-            
-        pkey = paramiko.RSAKey.from_private_key(open(self['ansible_ssh_private_key_file'], 'r'))
-            
-        ssh.connect(self['ansible_host'], username = self['ansible_user'], pkey = pkey)
+
+        result = None
 
         if self._sudo != None:
 
@@ -185,6 +180,38 @@ class Host(object):
         if self._cd != None:
 
             command = 'cd %s; %s' % (self._cd, command)
+
+        if self['ansible_connection'] == 'local':
+
+            result = self.do_local(command)
+
+        else:
+
+            result = self.do_remote(command)
+
+        return result
+
+
+
+    def do_local(self, command):
+
+        p = subprocess.Popen(command, shell = True, stdout = subprocess.PIPE, stderr = subprocess.PIPE)
+
+        out, err = p.communicate()
+
+        return out.strip().split('\n')
+        
+        
+        
+    def do_remote(self, command):
+    
+        ssh = paramiko.SSHClient()
+            
+        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            
+        pkey = paramiko.RSAKey.from_private_key(open(self['ansible_ssh_private_key_file'], 'r'))
+            
+        ssh.connect(self['ansible_host'], username = self['ansible_user'], pkey = pkey)
         
         ins, out, err = ssh.exec_command(command)
 
@@ -464,7 +491,7 @@ foo_all=bar_all
 
         out = host.do('whoami')
 
-        self.assertEqual('%s\n' % host['ansible_user'], out[0], 'Remotely running a command')
+        self.assertEqual('%s' % host['ansible_user'], out[0], 'Remotely running a command')
 
 
 
@@ -475,9 +502,9 @@ foo_all=bar_all
 
         host.do('echo "One ring to rule them all" > /tmp/remote_file.txt')
 
-        file_content = host.file('/tmp/remote_file.txt').cat()
+        file_content = host.file('/tmp/remote_file.txt').tail()
 
-        self.assertEqual('One ring to rule them all\n', file_content[0], 'Reading a remote file')
+        self.assertEqual('One ring to rule them all', file_content[0], 'Reading a remote file')
 
 
 

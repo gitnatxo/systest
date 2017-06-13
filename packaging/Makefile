@@ -1,4 +1,4 @@
-
+all: rpm
 
 rpm:
 	find rpm -mindepth 1 -maxdepth 1 -type d -exec rm -rf {} \;
@@ -21,3 +21,9 @@ rpm:
 	j2 -f yaml rpm/python-libsystest.spec.j2 rpm/TMP/python-libsystest.yml > rpm/SPECS/python-libsystest.spec
 
 	rpmbuild --define "%_topdir `pwd`/rpm/" -bb rpm/SPECS/python-libsystest.spec
+
+
+
+clean:
+
+	find rpm -mindepth 1 -maxdepth 1 -type d -exec rm -rf {} \;
