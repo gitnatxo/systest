@@ -84,7 +84,7 @@ class URL:
 
 		result = None
 
-		status_pattern = re.compile('HTTP/... (...) .*')
+		status_pattern = re.compile('HTTP/... (...).*')
 
 		if self.load() != None and len(self.load()) > 0:
 

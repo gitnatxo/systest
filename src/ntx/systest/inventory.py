@@ -7,6 +7,7 @@ from ansible.parsing.dataloader import DataLoader
 import copy
 import functools
 import importlib
+import os
 import paramiko
 import pkgutil
 import subprocess
@@ -105,9 +106,9 @@ class Host(object):
 
             Host._modules = dict()
 
-            for module_name in [name for _, name, _ in pkgutil.iter_modules(['modules'])]:
+            for module_name in [name for _, name, _ in pkgutil.iter_modules(['%s/modules' % os.path.dirname(__file__)])]:
 
-                module = importlib.import_module('modules.%s' % module_name)
+                module = importlib.import_module('ntx.systest.modules.%s' % module_name)
 
                 Host._modules[module_name] = module.hook
         
@@ -146,8 +147,14 @@ class Host(object):
         
         
     def get(self, name):
+
+        result = None
+
+        if self._inventory.get_host_vars(self._name).has_key(name):
     
-        return self._inventory.get_host_vars(self._name)[name]
+            result = self._inventory.get_host_vars(self._name)[name]
+
+        return result
         
         
         
