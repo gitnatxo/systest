@@ -220,7 +220,7 @@ class Host(object):
             
         ssh.connect(self['ansible_host'], username = self['ansible_user'], pkey = pkey)
         
-        ins, out, err = ssh.exec_command(command)
+        ins, out, err = ssh.exec_command(command, get_pty = True)
 
         result = out.readlines()[:]
 
